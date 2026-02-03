@@ -67,6 +67,7 @@ const commands = {
   <span class="system-msg">clear</span>         - Clear terminal
   <span class="system-msg">history</span>       - Show command history
   <span class="system-msg">save</span>          - Save sensor data as CSV
+  <span class="highlight">report</span>        - Generate AI PDF report (Gemma)
   <span class="system-msg">about</span>         - About Pran-Bot
   <span class="system-msg">help</span>          - Show this help message
 `;
@@ -184,6 +185,10 @@ const commands = {
 
     save: () => {
         return saveDataAsCSV();
+    },
+
+    report: () => {
+        return generateAIReport();
     },
 
     about: () => {
@@ -549,6 +554,107 @@ function saveDataAsCSV() {
 
     return `<span class="success">✓ Data saved to ${filename}</span>
 <span class="system-msg">${sensorHistory.timestamps.length} records exported.</span>`;
+}
+
+// Report Server URL
+const REPORT_SERVER_URL = 'http://localhost:5000';
+
+async function generateAIReport() {
+    if (sensorHistory.timestamps.length < 3) {
+        addOutput('<span class="warning">⚠ Not enough data for report. Need at least 3 records.</span>');
+        addOutput('<span class="system-msg">Let the system collect more data or run "graph sensors" first.</span>');
+        return null;
+    }
+
+    // Show progress message
+    addOutput(`
+<div class="report-progress" id="report-progress">
+    <span class="highlight">━━━ GENERATING AI REPORT ━━━</span>
+    
+    <span class="system-msg">📊 Preparing sensor data...</span>
+    <span class="system-msg">🤖 Connecting to Gemma AI (gemma2:9b)...</span>
+    <span class="warning">⏳ This may take 30-60 seconds...</span>
+</div>`);
+
+    try {
+        // Check if server is running
+        const healthCheck = await fetch(`${REPORT_SERVER_URL}/health`, {
+            method: 'GET',
+            timeout: 5000
+        }).catch(() => null);
+
+        if (!healthCheck || !healthCheck.ok) {
+            addOutput('<span class="error">❌ Report server not running!</span>');
+            addOutput('<span class="system-msg">Start the server with: python report_server.py</span>');
+            return null;
+        }
+
+        const healthData = await healthCheck.json();
+        if (healthData.ollama !== 'connected') {
+            addOutput('<span class="error">❌ Ollama not connected!</span>');
+            addOutput('<span class="system-msg">Make sure Ollama is running: ollama serve</span>');
+            return null;
+        }
+
+        addOutput('<span class="success">✓ Server connected, generating report...</span>');
+
+        // Send data to server
+        const response = await fetch(`${REPORT_SERVER_URL}/generate-report`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                sensorData: sensorHistory
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            addOutput(`<span class="error">❌ Error: ${errorData.error}</span>`);
+            return null;
+        }
+
+        // Download the PDF
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const now = new Date();
+        const filename = `pranbot_report_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.pdf`;
+
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        addOutput(`
+<span class="success">━━━ REPORT GENERATED ━━━</span>
+
+  <span class="success">✓ PDF Report: ${filename}</span>
+  <span class="system-msg">✓ Data Points: ${sensorHistory.timestamps.length} records</span>
+  <span class="system-msg">✓ AI Analysis: Gemma 2 9B</span>
+  <span class="system-msg">✓ CSV data also saved</span>
+  
+  <span class="highlight">Report includes:</span>
+  • Statistical summary table
+  • Sensor readings graph
+  • GPI trend analysis
+  • Environmental conditions graph
+  • Value distribution chart
+  • AI-powered analysis & recommendations
+`);
+
+        return null;
+
+    } catch (error) {
+        console.error('Report generation error:', error);
+        addOutput(`<span class="error">❌ Error: ${error.message}</span>`);
+        addOutput('<span class="system-msg">Check console for details.</span>');
+        return null;
+    }
 }
 
 // ===================== HELPER FUNCTIONS =====================

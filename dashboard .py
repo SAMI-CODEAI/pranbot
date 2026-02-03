@@ -200,8 +200,8 @@ if raw:
         "humidity": raw.get("humidity", 0),
     }
     for s in MQ_SENSORS:
-        row[f"{s}_ADC"] = st.session_state.sensors[s]["raw"][-1]
-        row[f"{s}_Rs_R0"] = st.session_state.sensors[s]["rs_r0"][-1]
+        row[f"{s}_Level"] = st.session_state.sensors[s]["raw"][-1]
+        row[f"{s}_Ratio"] = st.session_state.sensors[s]["rs_r0"][-1]
         row[f"{s}_Health"] = st.session_state.sensors[s]["health"]
     st.session_state.log_rows.append(row)
 
@@ -266,7 +266,7 @@ for i, s in enumerate(MQ_SENSORS):
         cols[i].warning(f"{s}\n{h}")
 
 # ===================== PLOTS =====================
-st.subheader("📈 Rs/R₀ Trends")
+st.subheader("📈 Sensor Trends")
 for s in MQ_SENSORS:
     fig = go.Figure()
     fig.add_trace(go.Scatter(y=st.session_state.sensors[s]["rs_r0"], mode="lines"))

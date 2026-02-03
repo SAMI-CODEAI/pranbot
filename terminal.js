@@ -66,6 +66,7 @@ const commands = {
   
   <span class="system-msg">clear</span>         - Clear terminal
   <span class="system-msg">history</span>       - Show command history
+  <span class="system-msg">save</span>          - Save sensor data as CSV
   <span class="system-msg">about</span>         - About Pran-Bot
   <span class="system-msg">help</span>          - Show this help message
 `;
@@ -179,6 +180,10 @@ const commands = {
             result += `  ${i + 1}. ${cmd}\n`;
         });
         return result;
+    },
+
+    save: () => {
+        return saveDataAsCSV();
     },
 
     about: () => {
@@ -501,6 +506,49 @@ function recordHistory() {
             sensorHistory[key] = sensorHistory[key].slice(-MAX_HISTORY);
         }
     });
+}
+
+function saveDataAsCSV() {
+    if (sensorHistory.timestamps.length === 0) {
+        return '<span class="warning">⚠ No sensor data to save.</span>';
+    }
+
+    // Create CSV header
+    const headers = ['Timestamp', 'Smoke (MQ-2)', 'Methane (MQ-3)', 'CO (MQ-7)', 'Air Quality (MQ-135)', 'GPI', 'Temperature (°C)', 'Humidity (%)'];
+    let csvContent = headers.join(',') + '\n';
+
+    // Add data rows
+    for (let i = 0; i < sensorHistory.timestamps.length; i++) {
+        const row = [
+            sensorHistory.timestamps[i],
+            sensorHistory.smoke[i],
+            sensorHistory.methane[i],
+            sensorHistory.co[i],
+            sensorHistory.air[i],
+            sensorHistory.gpi[i],
+            sensorHistory.temperature[i].toFixed(1),
+            sensorHistory.humidity[i].toFixed(1)
+        ];
+        csvContent += row.join(',') + '\n';
+    }
+
+    // Create and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const now = new Date();
+    const filename = `pranbot_data_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.csv`;
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    return `<span class="success">✓ Data saved to ${filename}</span>
+<span class="system-msg">${sensorHistory.timestamps.length} records exported.</span>`;
 }
 
 // ===================== HELPER FUNCTIONS =====================

@@ -1,6 +1,6 @@
 import time
 import os
-import requests
+# import requests  # COMMENTED: Not needed for simulation mode
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -9,14 +9,18 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ===================== CONFIG =====================
-ESP32_IP = "http://192.168.4.1"
+# ESP32_IP = "http://192.168.4.1"  # COMMENTED: Using simulated data instead
 REFRESH_SEC = 1
 HISTORY = 120
 GRID_SIZE = 20
 EMA_ALPHA = 0.2
 CMD_TIMEOUT = 0.4
 DANGER_GPI = 200
-MOCK_MODE = False
+
+# ===================== SIMULATION MODE =====================
+# Load simulated data from CSV file for testing
+SIMULATION_MODE = True
+SIMULATION_CSV = "tests/simulated_data.csv"
 
 # ===================== SENSOR MODEL =====================
 MQ_SENSORS = {
@@ -52,32 +56,60 @@ if "sensors" not in st.session_state:
     st.session_state.gpi_raw = []
     st.session_state.gpi_ema = []
     st.session_state.log_rows = []
+    st.session_state.sim_index = 0  # Track current row in simulation
+
+# ===================== LOAD SIMULATION DATA =====================
+@st.cache_data
+def load_simulation_data():
+    """Load simulation data from CSV file."""
+    try:
+        df = pd.read_csv(SIMULATION_CSV)
+        return df
+    except FileNotFoundError:
+        st.error(f"Simulation file not found: {SIMULATION_CSV}")
+        return None
 
 # ===================== ESP HELPERS =====================
-def fetch_data(mock=False):
-    if mock:
-        return {
-            "smoke": int(np.random.normal(400, 50)),
-            "methane": int(np.random.normal(100, 10)),
-            "co": int(np.random.normal(30, 5)),
-            "air": int(np.random.normal(80, 5)),
-            "battery": int(np.random.normal(3800, 100)),
-            "ir_left": 1 if np.random.random() > 0.9 else 0,
-            "ir_right": 1 if np.random.random() > 0.9 else 0
-        }
-    try:
-        response = requests.get(f"{ESP32_IP}/data", timeout=0.6)
-        if response.status_code == 200:
-            return response.json()
+# def fetch_data():
+#     """COMMENTED: Original live data fetch from ESP32"""
+#     try:
+#         response = requests.get(f"{ESP32_IP}/data", timeout=0.6)
+#         if response.status_code == 200:
+#             return response.json()
+#         return None
+#     except:
+#         return None
+
+def fetch_simulated_data(df):
+    """Fetch next row from simulation CSV as if it were live data."""
+    if df is None or len(df) == 0:
         return None
-    except:
-        return None
+    
+    # Get current row and wrap around if at end
+    idx = st.session_state.sim_index % len(df)
+    row = df.iloc[idx]
+    st.session_state.sim_index += 1
+    
+    # Return data in same format as ESP32 JSON
+    return {
+        "smoke": int(row.get("smoke", 0)),
+        "methane": int(row.get("methane", 0)),
+        "co": int(row.get("co", 0)),
+        "air": int(row.get("air", 0)),
+        "battery": int(row.get("battery", 0)),
+        "ir_left": int(row.get("ir_left", 0)),
+        "ir_right": int(row.get("ir_right", 0)),
+        "temperature": float(row.get("temperature", 25.0)),
+        "humidity": float(row.get("humidity", 50.0)),
+    }
 
 def send_cmd(cmd):
-    try:
-        requests.get(f"{ESP32_IP}/cmd?d={cmd}", timeout=CMD_TIMEOUT)
-    except:
-        pass
+    """COMMENTED: Robot commands disabled in simulation mode"""
+    # try:
+    #     requests.get(f"{ESP32_IP}/cmd?d={cmd}", timeout=CMD_TIMEOUT)
+    # except:
+    #     pass
+    st.toast(f"⚠️ Simulation Mode: Command '{cmd}' ignored", icon="🤖")
 
 # ===================== MQ CORE =====================
 def rs_r0(adc, r0):
@@ -95,10 +127,11 @@ def health_check(sensor):
         return "WARMUP"
     if max(vals[-10:]) - min(vals[-10:]) < 2:
         return "STUCK"
-    if np.std(vals[-20:]) > 0.6 * np.mean(vals[-20:]):
-        return "NOISY"
-    if np.mean(vals[-20:]) < 3:
-        return "DEAD"
+    if len(vals) >= 20:
+        if np.std(vals[-20:]) > 0.6 * np.mean(vals[-20:]):
+            return "NOISY"
+        if np.mean(vals[-20:]) < 3:
+            return "DEAD"
     return "OK"
 
 def gpi_from_ratio(r):
@@ -108,8 +141,16 @@ def ema(prev, val):
     return val if prev is None else EMA_ALPHA * val + (1 - EMA_ALPHA) * prev
 
 # ===================== MAIN LOOP =====================
-mock_active = st.sidebar.checkbox("Enable Mock Mode (Sample Data)", value=False)
-raw = fetch_data(mock=mock_active)
+# Load simulation data
+sim_df = load_simulation_data()
+
+# Fetch data (simulation or live)
+if SIMULATION_MODE:
+    raw = fetch_simulated_data(sim_df)
+else:
+    # raw = fetch_data()  # COMMENTED: Live data fetch
+    raw = None
+
 gpi_raw = 0
 gpi_ema = 0
 
@@ -145,16 +186,18 @@ if raw:
     st.session_state.gpi_ema.append(gpi_ema)
     st.session_state.gpi_ema = st.session_state.gpi_ema[-HISTORY:]
 
-    # 🚨 Safety stop
-    if gpi_ema >= DANGER_GPI:
-        send_cmd("s")
-        send_cmd("bz")
+    # 🚨 Safety stop (disabled in simulation)
+    # if gpi_ema >= DANGER_GPI:
+    #     send_cmd("s")
+    #     send_cmd("bz")
 
     # 📋 Logging
     row = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "GPI_RAW": gpi_raw,
-        "GPI_EMA": gpi_ema
+        "GPI_EMA": gpi_ema,
+        "temperature": raw.get("temperature", 0),
+        "humidity": raw.get("humidity", 0),
     }
     for s in MQ_SENSORS:
         row[f"{s}_ADC"] = st.session_state.sensors[s]["raw"][-1]
@@ -175,18 +218,29 @@ st.markdown(f"## 🔥 GPI: **{gpi_ema}** — :{color}[{label}]")
 # ===================== CONNECTION STATUS =====================
 with st.sidebar:
     st.header("🔌 System Status")
-    if raw:
+    if SIMULATION_MODE:
+        st.warning("🧪 SIMULATION MODE")
+        st.info(f"Using: {SIMULATION_CSV}")
+        if sim_df is not None:
+            st.caption(f"Row {st.session_state.sim_index} / {len(sim_df)}")
+    elif raw:
         st.success("Robot Connected")
-        st.info(f"ESP32 IP: {ESP32_IP}")
+        # st.info(f"ESP32 IP: {ESP32_IP}")  # COMMENTED
     else:
         st.error("Robot Disconnected")
-        st.warning(f"Could not reach {ESP32_IP}")
         st.markdown("""
         **Troubleshooting:**
         1. Check if you are on **Gas_Robot_AP** Wi-Fi.
         2. Ensure ESP32 is powered on.
         3. Try pinging `192.168.4.1`.
         """)
+
+# ===================== TEMPERATURE & HUMIDITY =====================
+if raw:
+    st.subheader("🌡️ Environment")
+    col1, col2 = st.columns(2)
+    col1.metric("Temperature", f"{raw.get('temperature', 0):.1f} °C")
+    col2.metric("Humidity", f"{raw.get('humidity', 0):.1f} %")
 
 # ===================== ROBOT CONTROLS =====================
 st.subheader("🎮 Robot Controls")

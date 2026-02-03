@@ -16,6 +16,7 @@ GRID_SIZE = 20
 EMA_ALPHA = 0.2
 CMD_TIMEOUT = 0.4
 DANGER_GPI = 200
+MOCK_MODE = False
 
 # ===================== SENSOR MODEL =====================
 MQ_SENSORS = {
@@ -53,9 +54,22 @@ if "sensors" not in st.session_state:
     st.session_state.log_rows = []
 
 # ===================== ESP HELPERS =====================
-def fetch_data():
+def fetch_data(mock=False):
+    if mock:
+        return {
+            "smoke": int(np.random.normal(400, 50)),
+            "methane": int(np.random.normal(100, 10)),
+            "co": int(np.random.normal(30, 5)),
+            "air": int(np.random.normal(80, 5)),
+            "battery": int(np.random.normal(3800, 100)),
+            "ir_left": 1 if np.random.random() > 0.9 else 0,
+            "ir_right": 1 if np.random.random() > 0.9 else 0
+        }
     try:
-        return requests.get(f"{ESP32_IP}/data", timeout=0.6).json()
+        response = requests.get(f"{ESP32_IP}/data", timeout=0.6)
+        if response.status_code == 200:
+            return response.json()
+        return None
     except:
         return None
 
@@ -94,7 +108,8 @@ def ema(prev, val):
     return val if prev is None else EMA_ALPHA * val + (1 - EMA_ALPHA) * prev
 
 # ===================== MAIN LOOP =====================
-raw = fetch_data()
+mock_active = st.sidebar.checkbox("Enable Mock Mode (Sample Data)", value=False)
+raw = fetch_data(mock=mock_active)
 gpi_raw = 0
 gpi_ema = 0
 
@@ -157,6 +172,22 @@ def aqi_label(val):
 label, color = aqi_label(gpi_ema)
 st.markdown(f"## 🔥 GPI: **{gpi_ema}** — :{color}[{label}]")
 
+# ===================== CONNECTION STATUS =====================
+with st.sidebar:
+    st.header("🔌 System Status")
+    if raw:
+        st.success("Robot Connected")
+        st.info(f"ESP32 IP: {ESP32_IP}")
+    else:
+        st.error("Robot Disconnected")
+        st.warning(f"Could not reach {ESP32_IP}")
+        st.markdown("""
+        **Troubleshooting:**
+        1. Check if you are on **Gas_Robot_AP** Wi-Fi.
+        2. Ensure ESP32 is powered on.
+        3. Try pinging `192.168.4.1`.
+        """)
+
 # ===================== ROBOT CONTROLS =====================
 st.subheader("🎮 Robot Controls")
 c1, c2, c3, c4, c5 = st.columns(5)
@@ -217,4 +248,7 @@ if st.button("💾 Save to Excel"):
         st.success(f"Saved: {fname}")
 
 time.sleep(REFRESH_SEC)
-st.rerun()
+if hasattr(st, "rerun"):
+    st.rerun()
+else:
+    st.experimental_rerun()

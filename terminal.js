@@ -73,8 +73,8 @@ const commands = {
 `;
     },
 
-    status: () => {
-        updateSensorData();
+    status: async () => {
+        await updateSensorData();
         const gpiStatus = getGPIStatus(sensorReadings.gpi);
         return `
 <span class="highlight">━━━ SYSTEM STATUS ━━━</span>
@@ -88,8 +88,8 @@ const commands = {
 `;
     },
 
-    sensors: () => {
-        updateSensorData();
+    sensors: async () => {
+        await updateSensorData();
         return `
 <span class="highlight">━━━ MQ SENSOR ARRAY ━━━</span>
 
@@ -104,8 +104,8 @@ const commands = {
 `;
     },
 
-    gpi: () => {
-        updateSensorData();
+    gpi: async () => {
+        await updateSensorData();
         const gpi = sensorReadings.gpi;
         const status = getGPIStatus(gpi);
         const bar = createProgressBar(gpi, 500, 40);
@@ -122,8 +122,8 @@ const commands = {
 `;
     },
 
-    env: () => {
-        updateSensorData();
+    env: async () => {
+        await updateSensorData();
         return `
 <span class="highlight">━━━ ENVIRONMENT ━━━</span>
 
@@ -132,7 +132,9 @@ const commands = {
 `;
     },
 
-    battery: () => {
+    battery: async () => {
+        // Battery usually updated by status/sensors call, but let's ensure fresh data
+        await updateSensorData();
         const percent = getBatteryPercent(sensorReadings.battery);
         const bar = createProgressBar(percent, 100, 30);
         const statusClass = percent > 50 ? 'success' : percent > 20 ? 'warning' : 'error';
@@ -158,14 +160,14 @@ const commands = {
         return '<span class="warning">⏹ Live graph updates stopped.</span>';
     },
 
-    forward: () => sendRobotCommand('f', 'Moving forward...'),
-    back: () => sendRobotCommand('b', 'Moving backward...'),
-    left: () => sendRobotCommand('l', 'Turning left...'),
-    right: () => sendRobotCommand('r', 'Turning right...'),
-    stop: () => sendRobotCommand('s', 'Stopping...'),
+    forward: async () => await sendRobotCommand('f', 'Moving forward...'),
+    back: async () => await sendRobotCommand('b', 'Moving backward...'),
+    left: async () => await sendRobotCommand('l', 'Turning left...'),
+    right: async () => await sendRobotCommand('r', 'Turning right...'),
+    stop: async () => await sendRobotCommand('s', 'Stopping...'),
 
-    'buzzer on': () => sendRobotCommand('bz', 'Buzzer activated!'),
-    'buzzer off': () => sendRobotCommand('bo', 'Buzzer deactivated.'),
+    'buzzer on': async () => await sendRobotCommand('bz', 'Buzzer activated!'),
+    'buzzer off': async () => await sendRobotCommand('bo', 'Buzzer deactivated.'),
 
     clear: () => {
         output.innerHTML = '';
@@ -556,8 +558,8 @@ function saveDataAsCSV() {
 <span class="system-msg">${sensorHistory.timestamps.length} records exported.</span>`;
 }
 
-// Report Server URL
-const REPORT_SERVER_URL = 'http://localhost:5000';
+// Report Server URL (Empty for relative path)
+const REPORT_SERVER_URL = '';
 
 async function generateAIReport() {
     if (sensorHistory.timestamps.length < 3) {
@@ -659,25 +661,43 @@ async function generateAIReport() {
 
 // ===================== HELPER FUNCTIONS =====================
 
-function updateSensorData() {
-    // Simulate slight variations in sensor readings
-    sensorReadings.smoke = 790 + Math.floor(Math.random() * 30);
-    sensorReadings.methane = 115 + Math.floor(Math.random() * 15);
-    sensorReadings.co = 38 + Math.floor(Math.random() * 6);
-    sensorReadings.air = 87 + Math.floor(Math.random() * 8);
-    sensorReadings.temperature = 27 + Math.random() * 3;
-    sensorReadings.humidity = 50 + Math.random() * 10;
-    sensorReadings.battery = Math.max(3500, sensorReadings.battery - 1);
+async function updateSensorData() {
+    try {
+        const response = await fetch('/api/data');
+        if (!response.ok) throw new Error('Network response was not ok');
 
-    // Calculate GPI
-    const ratios = [
-        sensorReadings.smoke / 800,
-        sensorReadings.methane / 120,
-        sensorReadings.co / 40,
-        sensorReadings.air / 90
-    ];
-    const avgRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-    sensorReadings.gpi = Math.min(500, Math.floor(100 * Math.log10(1 + avgRatio * 5)));
+        const data = await response.json();
+
+        // Update state with real data
+        sensorReadings.smoke = data.smoke || 0;
+        sensorReadings.methane = data.methane || 0;
+        sensorReadings.co = data.co || 0;
+        sensorReadings.air = data.air || 0;
+        sensorReadings.battery = data.battery || 0;
+        sensorReadings.ir_left = data.ir_left;
+        sensorReadings.ir_right = data.ir_right;
+
+        // Use provided values or simulate Env if missing (ESP32 code didn't emit temp/humid)
+        sensorReadings.temperature = data.temperature || (27 + Math.random());
+        sensorReadings.humidity = data.humidity || (50 + Math.random() * 5);
+
+        // Calculate GPI if not provided
+        if (data.gpi !== undefined) {
+            sensorReadings.gpi = data.gpi;
+        } else {
+            const ratios = [
+                sensorReadings.smoke / 800,
+                sensorReadings.methane / 120,
+                sensorReadings.co / 40,
+                sensorReadings.air / 90
+            ];
+            const avgRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+            sensorReadings.gpi = Math.min(500, Math.floor(100 * Math.log10(1 + avgRatio * 5)));
+        }
+
+    } catch (e) {
+        console.warn('Failed to fetch sensor data:', e);
+    }
 }
 
 function getGPIStatus(gpi) {
@@ -703,9 +723,13 @@ function createProgressBar(value, max, width) {
     return `[${bar}]`;
 }
 
-function sendRobotCommand(cmd, message) {
-    return `<span class="warning">⚙ ${message}</span>
-<span class="system-msg">(Simulation mode: command '${cmd}' logged)</span>`;
+async function sendRobotCommand(cmd, message) {
+    try {
+        await fetch(`/api/cmd?d=${cmd}`);
+        return `<span class="success">✓ ${message}</span>`;
+    } catch (e) {
+        return `<span class="error">❌ Failed: ${e.message}</span>`;
+    }
 }
 
 function addOutput(html) {
@@ -715,7 +739,7 @@ function addOutput(html) {
     output.scrollTop = output.scrollHeight;
 }
 
-function processCommand(cmd) {
+async function processCommand(cmd) {
     const trimmedCmd = cmd.trim().toLowerCase();
 
     if (!trimmedCmd) return;
@@ -737,16 +761,20 @@ function processCommand(cmd) {
     // Process command
     let response;
 
-    if (commands[trimmedCmd]) {
-        response = commands[trimmedCmd]();
-    } else if (trimmedCmd.startsWith('graph ')) {
-        const subCmd = trimmedCmd;
-        response = commands[subCmd] ? commands[subCmd]() : unknownCommand(cmd);
-    } else if (trimmedCmd.startsWith('buzzer ')) {
-        const subCmd = trimmedCmd;
-        response = commands[subCmd] ? commands[subCmd]() : unknownCommand(cmd);
-    } else {
-        response = unknownCommand(cmd);
+    try {
+        if (commands[trimmedCmd]) {
+            response = await commands[trimmedCmd]();
+        } else if (trimmedCmd.startsWith('graph ')) {
+            const subCmd = trimmedCmd;
+            response = commands[subCmd] ? await commands[subCmd]() : unknownCommand(cmd);
+        } else if (trimmedCmd.startsWith('buzzer ')) {
+            const subCmd = trimmedCmd;
+            response = commands[subCmd] ? await commands[subCmd]() : unknownCommand(cmd);
+        } else {
+            response = unknownCommand(cmd);
+        }
+    } catch (e) {
+        response = `<span class="error">Execution Error: ${e.message}</span>`;
     }
 
     if (response) {

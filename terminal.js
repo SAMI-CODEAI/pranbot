@@ -19,7 +19,11 @@ let sensorHistory = {
     gpi: [],
     temperature: [],
     humidity: [],
-    timestamps: []
+    temperature: [],
+    humidity: [],
+    timestamps: [],
+    radarAngle: 90,
+    radarDistance: 0
 };
 const MAX_HISTORY = 60;
 let updateInterval = null;
@@ -34,7 +38,10 @@ const sensorReadings = {
     temperature: 28.5,
     humidity: 55.2,
     battery: 3850,
-    gpi: 78
+    battery: 3850,
+    gpi: 78,
+    radarAngle: 90,
+    radarDistance: 0
 };
 
 // ===================== COMMANDS =====================
@@ -47,22 +54,13 @@ const commands = {
   <span class="success">sensors</span>       - Display all MQ sensor values
   <span class="success">gpi</span>           - Show Gas Pollution Index
   <span class="success">env</span>           - Show temperature & humidity
-  <span class="success">battery</span>       - Show battery level
+  <span class="warning">radar</span>         - Show radar status
   
   <span class="cyan">graph sensors</span> - Live sensor readings graph
   <span class="cyan">graph gpi</span>     - Live GPI trend graph
   <span class="cyan">graph env</span>     - Temperature & humidity graph
   <span class="cyan">graph all</span>     - Show all graphs
   <span class="cyan">graph stop</span>    - Stop live updates
-  
-  <span class="warning">forward</span>       - Move robot forward
-  <span class="warning">back</span>          - Move robot backward
-  <span class="warning">left</span>          - Turn robot left
-  <span class="warning">right</span>         - Turn robot right
-  <span class="warning">stop</span>          - Stop robot movement
-  
-  <span class="highlight">buzzer on</span>    - Activate buzzer
-  <span class="highlight">buzzer off</span>   - Deactivate buzzer
   
   <span class="system-msg">clear</span>         - Clear terminal
   <span class="system-msg">history</span>       - Show command history
@@ -82,7 +80,10 @@ const commands = {
   GPI Level:    <span class="${gpiStatus.class}">${sensorReadings.gpi}</span> (${gpiStatus.label})
   Temperature:  ${sensorReadings.temperature.toFixed(1)} °C
   Humidity:     ${sensorReadings.humidity.toFixed(1)} %
+  Temperature:  ${sensorReadings.temperature.toFixed(1)} °C
+  Humidity:     ${sensorReadings.humidity.toFixed(1)} %
   Battery:      ${getBatteryPercent(sensorReadings.battery)}%
+  Radar:        ${sensorReadings.radarDistance}cm @ ${sensorReadings.radarAngle}°
 
   Status:       <span class="success">● OPERATIONAL</span>
 `;
@@ -146,6 +147,27 @@ const commands = {
 `;
     },
 
+    radar: async () => {
+        await updateSensorData();
+        const dist = sensorReadings.radarDistance;
+        const angle = sensorReadings.radarAngle;
+        const distBar = createProgressBar(dist, 200, 30);
+
+        let visual = '';
+        if (angle < 60) visual = '    \\  ';
+        else if (angle > 120) visual = '  /    ';
+        else visual = '   |   ';
+
+        return `
+<span class="highlight">━━━ RADAR SCAN ━━━</span>
+
+  Angle:    ${angle}° ${visual}
+  Distance: <span class="${dist < 20 ? 'error' : 'success'}">${dist} cm</span>
+  
+  ${distBar}
+`;
+    },
+
     'graph sensors': () => createSensorGraph(),
     'graph gpi': () => createGPIGraph(),
     'graph env': () => createEnvGraph(),
@@ -159,15 +181,6 @@ const commands = {
         stopLiveUpdates();
         return '<span class="warning">⏹ Live graph updates stopped.</span>';
     },
-
-    forward: async () => await sendRobotCommand('f', 'Moving forward...'),
-    back: async () => await sendRobotCommand('b', 'Moving backward...'),
-    left: async () => await sendRobotCommand('l', 'Turning left...'),
-    right: async () => await sendRobotCommand('r', 'Turning right...'),
-    stop: async () => await sendRobotCommand('s', 'Stopping...'),
-
-    'buzzer on': async () => await sendRobotCommand('bz', 'Buzzer activated!'),
-    'buzzer off': async () => await sendRobotCommand('bo', 'Buzzer deactivated.'),
 
     clear: () => {
         output.innerHTML = '';
@@ -676,6 +689,8 @@ async function updateSensorData() {
         sensorReadings.battery = data.battery || 0;
         sensorReadings.ir_left = data.ir_left;
         sensorReadings.ir_right = data.ir_right;
+        sensorReadings.radarAngle = data.radar_angle || 90;
+        sensorReadings.radarDistance = data.radar_distance || 0;
 
         // Use provided values or simulate Env if missing (ESP32 code didn't emit temp/humid)
         sensorReadings.temperature = data.temperature || (27 + Math.random());

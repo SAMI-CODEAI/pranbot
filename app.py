@@ -56,13 +56,15 @@ def get_data():
     if MOCK_ESP32:
         # Simulated data if ESP32 is offline/mocked
         return jsonify({
-            "smoke": random.randint(300, 900),
-            "methane": random.randint(100, 300),
-            "co": random.randint(20, 80),
-            "air": random.randint(50, 150),
+            "smoke": random.randint(300, 1400),
+            "methane": random.randint(100, 1000),
+            "co": random.randint(20, 500),
+            "air": random.randint(50, 1600),
             "battery": random.randint(3000, 4200),
             "ir_left": random.choice([0, 1]),
             "ir_right": random.choice([0, 1]),
+            "radar_angle": random.choice(range(20, 160, 5)),
+            "radar_distance": random.randint(5, 200),
             "mock": True
         })
 

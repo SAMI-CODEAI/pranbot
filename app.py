@@ -192,7 +192,14 @@ def generate_pdf_report(sensor_data, ai_analysis):
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "running", "ollama": "unknown", "model": GEMMA_MODEL})
+    try:
+        # Check if Ollama is running
+        response = requests.get("http://localhost:11434/api/tags", timeout=1)
+        ollama_status = "connected" if response.status_code == 200 else "error"
+    except:
+        ollama_status = "disconnected"
+        
+    return jsonify({"status": "running", "ollama": ollama_status, "model": GEMMA_MODEL})
 
 @app.route('/generate-report', methods=['POST'])
 def generate_report():
@@ -204,8 +211,11 @@ def generate_report():
         
         # Convert to list of dicts
         records = []
+        # Filter only list data that matches timestamp length
+        valid_keys = [k for k, v in sensor_data.items() if isinstance(v, list) and len(v) == len(sensor_data['timestamps'])]
+        
         for i in range(len(sensor_data['timestamps'])):
-            records.append({k: sensor_data[k][i] for k in sensor_data.keys()})
+            records.append({k: sensor_data[k][i] for k in valid_keys})
 
         ai_analysis = generate_ai_analysis(records)
         pdf_buffer = generate_pdf_report(records, ai_analysis)

@@ -1,0 +1,104 @@
+#include <ESP8266WiFi.h>
+
+const char* ssid = "ESP_CAR";
+const char* password = "12345678";
+
+WiFiServer server(80);
+
+// Motor pins
+int IN1 = D1;
+int IN2 = D2;
+int IN3 = D3;
+int IN4 = D4;
+int ENA = D5;
+int ENB = D6;
+
+void setup() {
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  pinMode(ENA, OUTPUT);
+  pinMode(ENB, OUTPUT);
+
+  analogWrite(ENA, 800);
+  analogWrite(ENB, 800);
+
+  WiFi.softAP(ssid, password);
+  server.begin();
+}
+
+void forward() {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void backward() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void left() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void right() {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void stopCar() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+}
+
+void loop() {
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  String request = client.readStringUntil('\r');
+  client.flush();
+
+  if (request.indexOf("/forward") != -1) forward();
+  else if (request.indexOf("/backward") != -1) backward();
+  else if (request.indexOf("/left") != -1) left();
+  else if (request.indexOf("/right") != -1) right();
+  else if (request.indexOf("/stop") != -1) stopCar();
+
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html\n");
+  client.println(R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+<title>ESP8266 Car</title>
+<style>
+button { width:100px; height:60px; font-size:20px; margin:5px; }
+</style>
+</head>
+<body>
+<center>
+<h2>ESP8266 WiFi Car</h2>
+<a href="/forward"><button>↑</button></a><br>
+<a href="/left"><button>←</button></a>
+<a href="/stop"><button>STOP</button></a>
+<a href="/right"><button>→</button></a><br>
+<a href="/backward"><button>↓</button></a>
+</center>
+</body>
+</html>
+)rawliteral");
+
+  delay(1);
+}

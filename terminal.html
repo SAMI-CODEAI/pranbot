@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pran-Bot Terminal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="terminal.css">
+    <!-- Chart.js for graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <!-- Scanline overlay -->
+    <div class="scanlines"></div>
+
+    <!-- CRT screen glow effect -->
+    <div class="crt-overlay"></div>
+
+    <!-- Terminal container -->
+    <div class="terminal" id="terminal">
+        <!-- Output area -->
+        <div class="output" id="output">
+            <pre class="ascii-art">
+ ____                        ____        _   
+|  _ \ _ __ __ _ _ __ ______| __ )  ___ | |_ 
+| |_) | '__/ _` | '_ \______| _ \ / _ \| __|
+|  __/| | | (_| | | | |     | |_) | (_) | |_ 
+|_|   |_|  \__,_|_| |_|     |____/ \___/ \__|
+                                              
+            </pre>
+            <p class="system-msg">Pran-Bot Environmental Guardian v1.0.0</p>
+            <p class="system-msg">Autonomous Gas Detection System</p>
+            <p class="system-msg">────────────────────────────────────────</p>
+            <p class="system-msg">Type <span class="highlight">'help'</span> for available commands.</p>
+            <p class="system-msg"> </p>
+        </div>
+
+        <!-- Input line -->
+        <div class="input-line">
+            <span class="prompt">
+                <span class="user">pranbot</span>@<span class="host">guardian</span>:<span class="path">~</span>$
+            </span>
+            <input type="text" id="command-input" class="command-input" autofocus autocomplete="off" spellcheck="false">
+            <span class="cursor"></span>
+        </div>
+    </div>
+
+    <script src="terminal.js"></script>
+</body>
+
+</html>

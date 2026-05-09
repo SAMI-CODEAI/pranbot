@@ -1,0 +1,392 @@
+    /* ===================== RESET & BASE ===================== */
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    :root {
+        --terminal-green: #00ff00;
+        --terminal-dim-green: #00cc00;
+        --terminal-dark-green: #003300;
+        --terminal-amber: #ffb000;
+        --terminal-cyan: #00ffff;
+        --terminal-white: #c0c0c0;
+        --terminal-bg: #000000;
+        --glow-color: rgba(0, 255, 0, 0.15);
+    }
+
+    /* ===================== BODY & BACKGROUND ===================== */
+    html,
+    body {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    body {
+        background-color: var(--terminal-bg);
+        color: var(--terminal-green);
+        font-family: 'Ubuntu Mono', 'Courier New', 'Consolas', monospace;
+        font-size: 16px;
+        line-height: 1.4;
+        position: relative;
+    }
+
+    /* Noise texture overlay */
+    body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        opacity: 0.03;
+        z-index: 1000;
+    }
+
+    /* ===================== SCANLINES ===================== */
+    .scanlines {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 999;
+        background: repeating-linear-gradient(0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px);
+    }
+
+    /* ===================== CRT GLOW OVERLAY ===================== */
+    .crt-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 998;
+        background: radial-gradient(ellipse at center,
+                transparent 0%,
+                rgba(0, 0, 0, 0.2) 80%,
+                rgba(0, 0, 0, 0.6) 100%);
+    }
+
+    /* ===================== TERMINAL CONTAINER ===================== */
+    .terminal {
+        height: 100vh;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        z-index: 1;
+    }
+
+    /* ===================== OUTPUT AREA ===================== */
+    .output {
+        flex: 1;
+        overflow-y: auto;
+        padding-bottom: 10px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--terminal-dark-green) var(--terminal-bg);
+    }
+
+    .output::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .output::-webkit-scrollbar-track {
+        background: var(--terminal-bg);
+    }
+
+    .output::-webkit-scrollbar-thumb {
+        background: var(--terminal-dark-green);
+        border-radius: 4px;
+    }
+
+    .output::-webkit-scrollbar-thumb:hover {
+        background: var(--terminal-dim-green);
+    }
+
+    /* ===================== ASCII ART ===================== */
+    .ascii-art {
+        color: var(--terminal-green);
+        font-size: 14px;
+        line-height: 1.2;
+        margin-bottom: 10px;
+        text-shadow: 0 0 10px var(--glow-color);
+    }
+
+    /* ===================== TEXT STYLES ===================== */
+    .system-msg {
+        color: var(--terminal-white);
+        margin: 2px 0;
+    }
+
+    .highlight {
+        color: var(--terminal-cyan);
+        font-weight: bold;
+    }
+
+    .error {
+        color: #ff4444;
+    }
+
+    .success {
+        color: var(--terminal-green);
+    }
+
+    .warning {
+        color: var(--terminal-amber);
+    }
+
+    .command-echo {
+        color: var(--terminal-white);
+        margin: 5px 0 2px 0;
+    }
+
+    .response {
+        color: var(--terminal-green);
+        margin: 2px 0 10px 0;
+        white-space: pre-wrap;
+    }
+
+    /* ===================== INPUT LINE ===================== */
+    .input-line {
+        display: flex;
+        align-items: center;
+        padding: 5px 0;
+        flex-shrink: 0;
+    }
+
+    .prompt {
+        white-space: nowrap;
+        text-shadow: 0 0 5px var(--glow-color);
+    }
+
+    .prompt .user {
+        color: var(--terminal-cyan);
+        font-weight: bold;
+    }
+
+    .prompt .host {
+        color: var(--terminal-green);
+    }
+
+    .prompt .path {
+        color: var(--terminal-amber);
+    }
+
+    .command-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--terminal-white);
+        font-family: inherit;
+        font-size: inherit;
+        caret-color: transparent;
+        text-shadow: 0 0 5px rgba(192, 192, 192, 0.3);
+    }
+
+    /* ===================== BLINKING CURSOR ===================== */
+    .cursor {
+        display: inline-block;
+        width: 10px;
+        height: 18px;
+        background-color: var(--terminal-green);
+        animation: blink 1s step-end infinite;
+        vertical-align: text-bottom;
+        box-shadow: 0 0 8px var(--terminal-green);
+    }
+
+    @keyframes blink {
+
+        0%,
+        100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0;
+        }
+    }
+
+    /* ===================== HISTORY LINES ===================== */
+    .history-line {
+        margin: 2px 0;
+    }
+
+    .history-prompt {
+        color: var(--terminal-dim-green);
+    }
+
+    .history-prompt .user {
+        color: #00aaaa;
+    }
+
+    .history-prompt .host {
+        color: var(--terminal-dim-green);
+    }
+
+    .history-prompt .path {
+        color: #cc8800;
+    }
+
+    /* ===================== DATA TABLE ===================== */
+    .data-table {
+        border-collapse: collapse;
+        margin: 10px 0;
+        font-size: 14px;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 4px 15px;
+        text-align: left;
+        border-bottom: 1px solid var(--terminal-dark-green);
+    }
+
+    .data-table th {
+        color: var(--terminal-cyan);
+        font-weight: bold;
+    }
+
+    .data-table td {
+        color: var(--terminal-white);
+    }
+
+    .data-table tr:hover td {
+        background-color: rgba(0, 255, 0, 0.05);
+    }
+
+    /* ===================== LOADING ANIMATION ===================== */
+    .loading {
+        display: inline-block;
+    }
+
+    .loading::after {
+        content: '';
+        animation: dots 1.5s infinite;
+    }
+
+    @keyframes dots {
+
+        0%,
+        20% {
+            content: '.';
+        }
+
+        40% {
+            content: '..';
+        }
+
+        60%,
+        100% {
+            content: '...';
+        }
+    }
+
+    /* ===================== GLOW TEXT EFFECT ===================== */
+    .glow {
+        text-shadow:
+            0 0 5px var(--terminal-green),
+            0 0 10px var(--terminal-green),
+            0 0 20px var(--terminal-green);
+    }
+
+    /* ===================== RESPONSIVE ===================== */
+    @media (max-width: 768px) {
+        body {
+            font-size: 14px;
+        }
+
+        .terminal {
+            padding: 10px;
+        }
+
+        .ascii-art {
+            font-size: 10px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        body {
+            font-size: 12px;
+        }
+
+        .ascii-art {
+            font-size: 8px;
+        }
+
+        .prompt .user,
+        .prompt .host,
+        .prompt .path {
+            display: none;
+        }
+
+        .prompt::before {
+            content: '$ ';
+            color: var(--terminal-green);
+        }
+    }
+
+    /* ===================== SELECTION ===================== */
+    ::selection {
+        background: var(--terminal-green);
+        color: var(--terminal-bg);
+    }
+
+    /* ===================== GRAPH CONTAINERS ===================== */
+    .graph-container {
+        background: rgba(0, 20, 0, 0.5);
+        border: 1px solid var(--terminal-dark-green);
+        border-radius: 4px;
+        padding: 15px;
+        margin: 15px 0;
+        box-shadow:
+            0 0 10px rgba(0, 255, 0, 0.1),
+            inset 0 0 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .graph-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--terminal-dark-green);
+    }
+
+    .graph-status {
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 3px;
+        background: rgba(0, 255, 0, 0.1);
+    }
+
+    .graph-status.success {
+        color: var(--terminal-green);
+    }
+
+    .graph-status.warning {
+        color: var(--terminal-amber);
+    }
+
+    .terminal-chart {
+        width: 100% !important;
+        height: 250px !important;
+        background: transparent;
+    }
+
+    /* Cyan text class */
+    .cyan {
+        color: var(--terminal-cyan);
+    }

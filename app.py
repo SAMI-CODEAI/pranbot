@@ -34,20 +34,26 @@ CORS(app)
 ESP32_IP = "http://192.168.4.1"
 OLLAMA_URL = "http://localhost:11434/api/generate"
 GEMMA_MODEL = "gemma2:9b"
-MOCK_ESP32 = False  # Set to True if ESP32 is not available
+MOCK_ESP32 = True  # Set to True for simulator
+
+# Global storage for emergency messages
+# In a real app, this would be a database.
+emergency_messages = []
 
 # ===================== STATIC FILES =====================
 @app.route('/')
 def index():
-    return send_file('terminal.html')
+    return send_file('dashboard.html')
 
-@app.route('/terminal.css')
-def css():
-    return send_file('terminal.css')
+@app.route('/dashboard.css')
+def dashboard_css():
+    return send_file('dashboard.css')
 
-@app.route('/terminal.js')
-def js():
-    return send_file('terminal.js')
+@app.route('/dashboard.js')
+def dashboard_js():
+    return send_file('dashboard.js')
+
+
 
 # ===================== ESP32 PROXY =====================
 @app.route('/api/data', methods=['GET'])
@@ -82,37 +88,7 @@ def get_data():
             "battery": 0, "ir_left": 1, "ir_right": 1
         }), 504
 
-@app.route('/api/cmd', methods=['GET'])
-def send_cmd():
-    """Send command to ESP32."""
-    cmd = request.args.get('d')
-    if not cmd:
-        return jsonify({"error": "No command provided"}), 400
 
-    if MOCK_ESP32:
-        return jsonify({"status": "OK", "mock": True})
-
-    try:
-        requests.get(f"{ESP32_IP}/cmd?d={cmd}", timeout=0.5)
-        return jsonify({"status": "OK"})
-    except:
-        return jsonify({"error": "Failed to send command"}), 502
-
-@app.route('/api/auto', methods=['GET'])
-def set_auto():
-    """Set autonomous mode."""
-    val = request.args.get('v')
-    if not val:
-        return jsonify({"error": "No value provided"}), 400
-    
-    if MOCK_ESP32:
-        return jsonify({"status": "OK", "mock": True})
-
-    try:
-        requests.get(f"{ESP32_IP}/auto?v={val}", timeout=0.5)
-        return jsonify({"status": "OK"})
-    except:
-        return jsonify({"error": "Failed to set auto mode"}), 502
 
 # ===================== REPORT GENERATION (From report_server.py) =====================
 def call_gemma(prompt, max_tokens=2000):
@@ -190,42 +166,78 @@ def generate_pdf_report(sensor_data, ai_analysis):
     pdf_buffer.seek(0)
     return pdf_buffer
 
-@app.route('/health', methods=['GET'])
-def health_check():
+# ===================== EMERGENCY LOGIC =====================
+def classify_emergency(text):
+    """Use Gemma to classify the message and extract intensity."""
+    prompt = f"""
+    Analyze this disaster distress message: "{text}"
+    
+    Categorize it into exactly one of these: INJURED, TRAPPED, NEED_FOOD, NEED_EVACUATION, GENERAL.
+    Assign a severity level: HIGH, MEDIUM, LOW.
+    Extract the main need in 3-5 words.
+    
+    Return ONLY JSON in this format:
+    {{"category": "TRAPPED", "severity": "HIGH", "need": "stuck under building"}}
+    """
+    response = call_gemma(prompt)
     try:
-        # Check if Ollama is running
-        response = requests.get("http://localhost:11434/api/tags", timeout=1)
-        ollama_status = "connected" if response.status_code == 200 else "error"
+        # Simple extraction of JSON from response
+        start = response.find('{')
+        end = response.rfind('}') + 1
+        if start != -1 and end != -1:
+            return json.loads(response[start:end])
     except:
-        ollama_status = "disconnected"
-        
-    return jsonify({"status": "running", "ollama": ollama_status, "model": GEMMA_MODEL})
+        pass
+    
+    # Fallback if AI fails or returns bad format
+    return {"category": "GENERAL", "severity": "MEDIUM", "need": text[:20]}
 
-@app.route('/generate-report', methods=['POST'])
-def generate_report():
-    try:
-        data = request.json
-        sensor_data = data.get('sensorData', {})
-        if not sensor_data.get('timestamps') or len(sensor_data['timestamps']) < 3:
-            return jsonify({"error": "Not enough data"}), 400
+@app.route('/api/emergency/receive', methods=['POST'])
+def receive_emergency():
+    data = request.json
+    raw_text = data.get('message', '')
+    location = data.get('location', {"x": random.randint(0, 100), "y": random.randint(0, 100)})
+    
+    if not raw_text:
+        return jsonify({"error": "No message"}), 400
         
-        # Convert to list of dicts
-        records = []
-        # Filter only list data that matches timestamp length
-        valid_keys = [k for k, v in sensor_data.items() if isinstance(v, list) and len(v) == len(sensor_data['timestamps'])]
-        
-        for i in range(len(sensor_data['timestamps'])):
-            records.append({k: sensor_data[k][i] for k in valid_keys})
+    analysis = classify_emergency(raw_text)
+    
+    entry = {
+        "id": len(emergency_messages) + 1,
+        "timestamp": datetime.now().isoformat(),
+        "raw": raw_text,
+        "category": analysis.get('category', 'GENERAL'),
+        "severity": analysis.get('severity', 'MEDIUM'),
+        "need": analysis.get('need', ''),
+        "location": location
+    }
+    
+    emergency_messages.append(entry)
+    return jsonify(entry)
 
-        ai_analysis = generate_ai_analysis(records)
-        pdf_buffer = generate_pdf_report(records, ai_analysis)
+@app.route('/api/emergency/list', methods=['GET'])
+def list_emergency():
+    return jsonify(emergency_messages[-20:]) # Return last 20
+
+@app.route('/api/emergency/stats', methods=['GET'])
+def get_stats():
+    stats = {
+        "total": len(emergency_messages),
+        "injured": len([m for m in emergency_messages if m['category'] == 'INJURED']),
+        "trapped": len([m for m in emergency_messages if m['category'] == 'TRAPPED']),
+        "need_evacuation": len([m for m in emergency_messages if m['category'] == 'NEED_EVACUATION']),
+        "hotspots": []
+    }
+    
+    # Hotspot logic: display recent report locations
+    if emergency_messages:
+        # Get up to the 15 most recent locations to form hotspots
+        stats['hotspots'] = [m['location'] for m in emergency_messages[-15:]]
         
-        filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify(stats)
 
 if __name__ == '__main__':
+    print("Starting Emergency Dashboard Server on http://localhost:5000")
     print("Starting Pran-Bot Terminal Server on http://localhost:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
